@@ -1939,6 +1939,32 @@
       right: 0;
     }
   }
+
+  /* Typing indicator */
+  .typing-dots {
+    display: inline-flex;
+    gap: 3px;
+  }
+
+  .typing-dots span {
+    animation: typingBounce 1.4s infinite ease-in-out;
+    font-size: 1.5rem;
+    line-height: 0.5;
+  }
+
+  .typing-dots span:nth-child(1) { animation-delay: 0s; }
+  .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes typingBounce {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+    30% { transform: translateY(-4px); opacity: 1; }
+  }
+
+  .chat-input:disabled, .chat-send:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
 </style>
 
 <script>
@@ -1971,6 +1997,13 @@
     });
   });
 
+  // Artemis Chat Widget Configuration
+  const ARTEMIS_CONFIG = {
+    tenantId: 'dd8db67b-6cd3-4372-a143-a0b89ff28881',
+    apiBase: 'https://artemis-consolidated-388610795169.us-east4.run.app',
+    sessionId: 'session_' + Math.random().toString(36).substr(2, 9)
+  };
+
   // Chat Widget Functions
   function toggleChat() {
     const widget = document.querySelector('.chat-widget');
@@ -1980,12 +2013,13 @@
     }
   }
 
-  function sendMessage() {
+  async function sendMessage() {
     const input = document.getElementById('chatInput');
     const message = input.value.trim();
     if (!message) return;
 
     const messagesContainer = document.getElementById('chatMessages');
+    const sendBtn = document.querySelector('.chat-send');
 
     // Add user message
     const userMsg = document.createElement('div');
@@ -1997,19 +2031,60 @@
     messagesContainer.appendChild(userMsg);
 
     input.value = '';
+    input.disabled = true;
+    sendBtn.disabled = true;
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
 
-    // Simulate bot response
-    setTimeout(() => {
+    // Show typing indicator
+    const typingIndicator = document.createElement('div');
+    typingIndicator.className = 'chat-message bot typing';
+    typingIndicator.innerHTML = `<div class="message-bubble"><span class="typing-dots"><span>.</span><span>.</span><span>.</span></span></div>`;
+    messagesContainer.appendChild(typingIndicator);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+    try {
+      const response = await fetch(`${ARTEMIS_CONFIG.apiBase}/api/tenant-chat/message`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Tenant-ID': ARTEMIS_CONFIG.tenantId
+        },
+        body: JSON.stringify({
+          message: message,
+          session_id: ARTEMIS_CONFIG.sessionId
+        })
+      });
+
+      const data = await response.json();
+
+      // Remove typing indicator
+      typingIndicator.remove();
+
+      // Add bot response
       const botMsg = document.createElement('div');
       botMsg.className = 'chat-message bot';
       botMsg.innerHTML = `
-        <div class="message-bubble">Thanks for reaching out! Our team will get back to you shortly. In the meantime, feel free to explore our programs or check out our FAQ.</div>
+        <div class="message-bubble">${escapeHtml(data.response || data.message || 'Thanks for your message!')}</div>
         <div class="message-time">Just now</div>
       `;
       messagesContainer.appendChild(botMsg);
-      messagesContainer.scrollTop = messagesContainer.scrollHeight;
-    }, 1000);
+    } catch (error) {
+      console.error('Chat error:', error);
+      typingIndicator.remove();
+
+      const errorMsg = document.createElement('div');
+      errorMsg.className = 'chat-message bot';
+      errorMsg.innerHTML = `
+        <div class="message-bubble">I'm having trouble connecting right now. Please try again or email us at info@theripplecenter.org</div>
+        <div class="message-time">Just now</div>
+      `;
+      messagesContainer.appendChild(errorMsg);
+    }
+
+    input.disabled = false;
+    sendBtn.disabled = false;
+    input.focus();
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
   }
 
   function handleKeyPress(e) {
