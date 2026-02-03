@@ -1677,6 +1677,12 @@
         </div>
         <div class="message-time">Just now</div>
       </div>
+      <div class="quick-buttons" id="quickButtons">
+        <button class="quick-btn" onclick="sendQuickMessage('How do I apply for the Fellowship?')">Apply for Fellowship</button>
+        <button class="quick-btn" onclick="sendQuickMessage('What programs do you offer?')">Our Programs</button>
+        <button class="quick-btn" onclick="sendQuickMessage('How can I become a mentor?')">Become a Mentor</button>
+        <button class="quick-btn" onclick="sendQuickMessage('How can I donate or support?')">Support Us</button>
+      </div>
     </div>
     <div class="chat-input-area">
       <input type="text" class="chat-input" id="chatInput" placeholder="Type your message..." onkeypress="handleKeyPress(event)">
@@ -1854,6 +1860,37 @@
     padding: 20px;
     overflow-y: auto;
     background: #f8f9fa;
+  }
+
+  .quick-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 0;
+    margin-bottom: 8px;
+  }
+
+  .quick-btn {
+    background: white;
+    border: 1.5px solid var(--ocean);
+    color: var(--ocean);
+    padding: 8px 14px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+  }
+
+  .quick-btn:hover {
+    background: var(--ocean);
+    color: white;
+    transform: translateY(-1px);
+  }
+
+  .quick-buttons.hidden {
+    display: none;
   }
 
   .chat-message {
@@ -2190,6 +2227,17 @@
     if (e.key === 'Enter') {
       sendMessage();
     }
+  }
+
+  function sendQuickMessage(message) {
+    // Hide quick buttons after first use
+    const quickButtons = document.getElementById('quickButtons');
+    if (quickButtons) {
+      quickButtons.classList.add('hidden');
+    }
+    // Set the message in the input and send
+    document.getElementById('chatInput').value = message;
+    sendMessage();
   }
 
   function escapeHtml(text) {
