@@ -2141,8 +2141,8 @@
     let fullResponse = '';
 
     try {
-      // Try streaming endpoint first
-      const response = await fetch(`${ARTEMIS_CONFIG.apiBase}/api/tenant-chat/message/stream`, {
+      // Use regular endpoint with simulated streaming for smooth UX
+      const response = await fetch(`${ARTEMIS_CONFIG.apiBase}/api/tenant-chat/message`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -2154,61 +2154,20 @@
         })
       });
 
-      if (response.ok && response.headers.get('content-type')?.includes('text/event-stream')) {
-        // Handle SSE streaming
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        bubbleDiv.innerHTML = '';
-        bubbleDiv.classList.add('streaming-text');
+      const data = await response.json();
+      fullResponse = data.response || data.message || 'Thanks for your message!';
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+      // Simulate streaming effect word by word
+      bubbleDiv.innerHTML = '';
+      bubbleDiv.classList.add('streaming-text');
+      const words = fullResponse.split(' ');
+      let currentText = '';
 
-          const chunk = decoder.decode(value);
-          const lines = chunk.split('\n');
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6).trim();
-              if (data === '[DONE]' || !data) continue;
-              try {
-                const parsed = JSON.parse(data);
-                if (parsed.type === 'chunk' && parsed.content) {
-                  fullResponse += parsed.content;
-                  bubbleDiv.innerHTML = parseMarkdown(fullResponse);
-                  messagesContainer.scrollTop = messagesContainer.scrollHeight;
-                } else if (parsed.type === 'done') {
-                  // Streaming complete
-                  continue;
-                }
-              } catch (e) {
-                // Not JSON, might be raw text
-                if (data && data !== '[DONE]') {
-                  fullResponse += data;
-                  bubbleDiv.innerHTML = parseMarkdown(fullResponse);
-                }
-              }
-            }
-          }
-        }
-      } else {
-        // Fallback to regular endpoint with simulated streaming
-        const data = await response.json();
-        fullResponse = data.response || data.message || 'Thanks for your message!';
-
-        // Simulate streaming effect
-        bubbleDiv.innerHTML = '';
-        bubbleDiv.classList.add('streaming-text');
-        const words = fullResponse.split(' ');
-        let currentText = '';
-
-        for (let i = 0; i < words.length; i++) {
-          currentText += (i > 0 ? ' ' : '') + words[i];
-          bubbleDiv.innerHTML = parseMarkdown(currentText);
-          messagesContainer.scrollTop = messagesContainer.scrollHeight;
-          await new Promise(r => setTimeout(r, 30)); // 30ms per word
-        }
+      for (let i = 0; i < words.length; i++) {
+        currentText += (i > 0 ? ' ' : '') + words[i];
+        bubbleDiv.innerHTML = parseMarkdown(currentText);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        await new Promise(r => setTimeout(r, 25)); // 25ms per word
       }
 
       // Final formatted response
