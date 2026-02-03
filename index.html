@@ -1984,6 +1984,60 @@
     opacity: 0.6;
     cursor: not-allowed;
   }
+
+  /* Formatted message content */
+  .message-bubble p {
+    margin: 0 0 0.75em 0;
+  }
+
+  .message-bubble p:last-child {
+    margin-bottom: 0;
+  }
+
+  .message-bubble strong {
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  .chat-message.bot .message-bubble strong {
+    color: var(--ocean);
+  }
+
+  .message-bubble a {
+    color: var(--ocean);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .message-bubble a:hover {
+    color: var(--coral);
+  }
+
+  .chat-message.user .message-bubble a {
+    color: rgba(255,255,255,0.9);
+  }
+
+  .message-bubble ul, .message-bubble ol {
+    margin: 0.5em 0;
+    padding-left: 1.25em;
+  }
+
+  .message-bubble li {
+    margin-bottom: 0.25em;
+  }
+
+  /* Streaming cursor effect */
+  .streaming-text::after {
+    content: '▋';
+    animation: blink 1s infinite;
+    margin-left: 2px;
+    color: var(--ocean);
+  }
+
+  @keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+  }
 </style>
 
 <script>
@@ -2032,6 +2086,22 @@
     }
   }
 
+  // Simple markdown parser for chat
+  function parseMarkdown(text) {
+    return text
+      // Bold **text**
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      // Italic *text*
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      // Links [text](url)
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+      // Line breaks
+      .replace(/\n\n/g, '</p><p>')
+      .replace(/\n/g, '<br>')
+      // Wrap in paragraph
+      .replace(/^(.+)$/, '<p>$1</p>');
+  }
+
   async function sendMessage() {
     const input = document.getElementById('chatInput');
     const message = input.value.trim();
@@ -2054,15 +2124,25 @@
     sendBtn.disabled = true;
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
 
-    // Show typing indicator
-    const typingIndicator = document.createElement('div');
-    typingIndicator.className = 'chat-message bot typing';
-    typingIndicator.innerHTML = `<div class="message-bubble"><span class="typing-dots"><span>.</span><span>.</span><span>.</span></span></div>`;
-    messagesContainer.appendChild(typingIndicator);
+    // Create bot message container for streaming
+    const botMsg = document.createElement('div');
+    botMsg.className = 'chat-message bot';
+    const bubbleDiv = document.createElement('div');
+    bubbleDiv.className = 'message-bubble streaming';
+    bubbleDiv.innerHTML = '<span class="typing-dots"><span>.</span><span>.</span><span>.</span></span>';
+    botMsg.appendChild(bubbleDiv);
+    const timeDiv = document.createElement('div');
+    timeDiv.className = 'message-time';
+    timeDiv.textContent = 'Just now';
+    botMsg.appendChild(timeDiv);
+    messagesContainer.appendChild(botMsg);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
 
+    let fullResponse = '';
+
     try {
-      const response = await fetch(`${ARTEMIS_CONFIG.apiBase}/api/tenant-chat/message`, {
+      // Try streaming endpoint first
+      const response = await fetch(`${ARTEMIS_CONFIG.apiBase}/api/tenant-chat/message/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -2074,30 +2154,66 @@
         })
       });
 
-      const data = await response.json();
+      if (response.ok && response.headers.get('content-type')?.includes('text/event-stream')) {
+        // Handle SSE streaming
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        bubbleDiv.innerHTML = '';
+        bubbleDiv.classList.add('streaming-text');
 
-      // Remove typing indicator
-      typingIndicator.remove();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-      // Add bot response
-      const botMsg = document.createElement('div');
-      botMsg.className = 'chat-message bot';
-      botMsg.innerHTML = `
-        <div class="message-bubble">${escapeHtml(data.response || data.message || 'Thanks for your message!')}</div>
-        <div class="message-time">Just now</div>
-      `;
-      messagesContainer.appendChild(botMsg);
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+              if (data === '[DONE]') continue;
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed.chunk) {
+                  fullResponse += parsed.chunk;
+                  bubbleDiv.innerHTML = parseMarkdown(fullResponse);
+                  messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                }
+              } catch (e) {
+                // Not JSON, might be raw text
+                fullResponse += data;
+                bubbleDiv.innerHTML = parseMarkdown(fullResponse);
+              }
+            }
+          }
+        }
+      } else {
+        // Fallback to regular endpoint with simulated streaming
+        const data = await response.json();
+        fullResponse = data.response || data.message || 'Thanks for your message!';
+
+        // Simulate streaming effect
+        bubbleDiv.innerHTML = '';
+        bubbleDiv.classList.add('streaming-text');
+        const words = fullResponse.split(' ');
+        let currentText = '';
+
+        for (let i = 0; i < words.length; i++) {
+          currentText += (i > 0 ? ' ' : '') + words[i];
+          bubbleDiv.innerHTML = parseMarkdown(currentText);
+          messagesContainer.scrollTop = messagesContainer.scrollHeight;
+          await new Promise(r => setTimeout(r, 30)); // 30ms per word
+        }
+      }
+
+      // Final formatted response
+      bubbleDiv.classList.remove('streaming', 'streaming-text');
+      bubbleDiv.innerHTML = parseMarkdown(fullResponse);
+
     } catch (error) {
       console.error('Chat error:', error);
-      typingIndicator.remove();
-
-      const errorMsg = document.createElement('div');
-      errorMsg.className = 'chat-message bot';
-      errorMsg.innerHTML = `
-        <div class="message-bubble">I'm having trouble connecting right now. Please try again or email us at info@theripplecenter.org</div>
-        <div class="message-time">Just now</div>
-      `;
-      messagesContainer.appendChild(errorMsg);
+      bubbleDiv.classList.remove('streaming', 'streaming-text');
+      bubbleDiv.innerHTML = parseMarkdown("I'm having trouble connecting right now. Please try again or email us at info@theripplecenter.org");
     }
 
     input.disabled = false;
